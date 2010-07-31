@@ -62,32 +62,36 @@ class PolymorphicBehavior extends ModelBehavior {
  */
 	function afterFind(&$Model, $results, $primary = false) {
 		extract($this->settings[$Model->alias]);
-		if (App::import('Vendor', 'Mi.MiCache')) {
+		/*if (App::import('Vendor', 'Mi.MiCache')) {
 			$models = MiCache::mi('models');
 		} else {
 			$models = Configure::listObjects('model');
-		}
+		}*/
+		$models = $this->__getModels();
 		if ($primary && isset($results[0][$Model->alias][$modelField]) && isset($results[0][$Model->alias][$foreignKey]) && $Model->recursive > 0) {
 			foreach ($results as $key => $result) {
 				$associated = array();
 				$model = Inflector::classify($result[$Model->alias][$modelField]);
+				//account for plugin models
+				$_model = end(explode('.', $model));
 				$foreignId = $result[$Model->alias][$foreignKey];
 				if ($model && $foreignId && in_array($model, $models)) {
 					$result = $result[$Model->alias];
-					if (!isset($Model->$model)) {
+					if (!isset($Model->$_model)) {
 						$Model->bindModel(array('belongsTo' => array(
-							$model => array(
+							$_model => array(
 								'conditions' => array($Model->alias . '.' . $modelField => $model),
-								'foreignKey' => $foreignKey
+								'foreignKey' => $foreignKey,
+								'className' => $model
 							)
 						)));
 					}
-					$conditions = array($model . '.' . $Model->$model->primaryKey => $result[$foreignKey]);
-					$recursive = -1;
-					$associated = $Model->$model->find('first', compact('conditions', 'recursive'));
-					$name = $Model->$model->display($result[$foreignKey]);
-					$associated[$model]['display_field'] = $name?$name:'*missing*';
-					$results[$key][$model] = $associated[$model];
+					$conditions = array($_model . '.' . $Model->$_model->primaryKey => $result[$foreignKey]);
+					$recursive = 0;
+					$associated = $Model->$_model->find('first', compact('conditions', 'recursive'));
+					$name = $this->display($Model->$_model, $result[$foreignKey]);
+					$associated[$_model]['display_field'] = $name?$name:'*missing*';
+					$results[$key][$_model] = $associated[$_model];
 				}
 			}
 		} elseif(isset($results[$Model->alias][$modelField])) {
@@ -107,7 +111,7 @@ class PolymorphicBehavior extends ModelBehavior {
 				$conditions = array($model . '.' . $Model->$model->primaryKey => $result[$foreignKey]);
 				$recursive = -1;
 				$associated = $Model->$model->find('first', compact('conditions', 'recursive'));
-				$name = $Model->$model->display($result[$foreignKey]);
+				$name = $this->display($model, $result[$foreignKey]);
 				$associated[$model]['display_field'] = $name?$name:'*missing*';
 				$results[$model] = $associated[$model];
 			}
@@ -132,6 +136,21 @@ class PolymorphicBehavior extends ModelBehavior {
 			$id = $Model->id;
 		}
 		return current($Model->find('list', array('conditions' => array($Model->alias . '.' . $Model->primaryKey => $id))));
+	}
+	private function __getModels() {
+		$models = App::objects('model');
+		$plugins = App::objects('plugin');
+		if (!empty($plugins)) {
+			foreach ($plugins as $plugin) {
+				$pluginModels = App::objects('model', App::pluginPath($plugin) . 'models' . DS, false);
+				if (!empty($pluginModels)) {
+					foreach ($pluginModels as $model) {
+						$models[] = "$plugin.$model";
+					}
+				}
+			}
+		}
+		return $models;
 	}
 }
 ?>
