@@ -36,7 +36,8 @@ class PolymorphicBehavior extends ModelBehavior {
  */
 	var $_defaultSettings = array(
 		'modelField' => 'model',
-		'foreignKey' => 'foreign_key'
+		'foreignKey' => 'foreign_key',
+		'accept' => null
 	);
 
 /**
@@ -49,6 +50,9 @@ class PolymorphicBehavior extends ModelBehavior {
  */
 	function setup(&$Model, $config = array()) {
 		$this->settings[$Model->alias] = am ($this->_defaultSettings, $config);
+		if(!$this->settings[$Model->alias]['accept']) {
+			$this->settings[$Model->alias]['accept'] = $this->__getModels();
+		}
 	}
 
 /**
@@ -62,12 +66,7 @@ class PolymorphicBehavior extends ModelBehavior {
  */
 	function afterFind(&$Model, $results, $primary = false) {
 		extract($this->settings[$Model->alias]);
-		/*if (App::import('Vendor', 'Mi.MiCache')) {
-			$models = MiCache::mi('models');
-		} else {
-			$models = Configure::listObjects('model');
-		}*/
-		$models = $this->__getModels();
+	
 		if ($primary && isset($results[0][$Model->alias][$modelField]) && isset($results[0][$Model->alias][$foreignKey]) && $Model->recursive > 0) {
 			foreach ($results as $key => $result) {
 				$associated = array();
@@ -75,7 +74,8 @@ class PolymorphicBehavior extends ModelBehavior {
 				//account for plugin models
 				$_model = end(explode('.', $model));
 				$foreignId = $result[$Model->alias][$foreignKey];
-				if ($model && $foreignId && in_array($model, $models)) {
+				if ($model && $foreignId && in_array($model, $accept)) {
+					$this->log(array($model, $_model, $result));
 					$result = $result[$Model->alias];
 					if (!isset($Model->$_model)) {
 						$Model->bindModel(array('belongsTo' => array(
